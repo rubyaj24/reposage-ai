@@ -1,36 +1,120 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# RepoSage - PR Intelligence Bot
 
-## Getting Started
+A minimal GitHub App that listens to pull request events and posts AI-powered review comments.
 
-First, run the development server:
+## Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Handles `pull_request.opened` events
+- Fetches PR title, description, commits, and changed files
+- Retrieves 2-3 related files from the same directories
+- Generates structured review using OpenRouter LLM
+- Posts one consolidated comment per PR
+
+## Project Structure
+
+```
+backend/
+├── main.py                 # FastAPI app entry point
+├── routes/
+│   └── webhook.py         # Webhook handler
+├── services/
+│   ├── auth.py            # JWT generation & webhook verification
+│   ├── github_client.py   # GitHub API client
+│   ├── pr_analyzer.py     # PR data gathering
+│   └── llm.py             # OpenRouter API integration
+├── requirements.txt
+└── .env.example
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 1. Create GitHub App
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Go to GitHub Settings → Developer settings → GitHub Apps
+2. Create new GitHub App with:
+   - **Webhook URL**: Your deployment URL (e.g., `https://your-app.railway.app/webhook`)
+   - **Webhook secret**: Generate a random string
+   - **Permissions**: Read access to `pull_requests`, `contents`, `commit`
+   - **Events**: Subscribe to `Pull request`
 
-## Learn More
+### 2. Deploy to Railway
 
-To learn more about Next.js, take a look at the following resources:
+1. Create new Railway project
+2. Connect GitHub repo
+3. Add environment variables:
+   ```
+   GITHUB_APP_ID=<your-app-id>
+   GITHUB_PRIVATE_KEY=<private-key-pem>
+   GITHUB_WEBHOOK_SECRET=<webhook-secret>
+   OPENROUTER_API_KEY=<your-openrouter-key>
+   APP_URL=https://your-app.railway.app
+   ```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 3. Install App
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Install the GitHub App on your account/organization
+2. Select repositories to monitor
 
-## Deploy on Vercel
+## Local Development
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# Create .env file
+cp .env.example .env
+# Edit .env with your values
+
+# Run
+uvicorn main:app --reload --port 8000
+```
+
+### Testing Webhooks Locally
+
+Use [smee.io](https://smee.io) to forward webhooks to localhost:
+
+```bash
+npx smee -u <your-smee-url> -t http://localhost:8000/webhook
+```
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GITHUB_APP_ID` | Yes | GitHub App ID |
+| `GITHUB_PRIVATE_KEY` | Yes | Private key (PEM format, newlines as `\n`) |
+| `GITHUB_WEBHOOK_SECRET` | Yes | Webhook secret for signature verification |
+| `OPENROUTER_API_KEY` | Yes | OpenRouter API key |
+| `APP_URL` | No | Your app URL for OpenRouter headers |
+
+## API Endpoints
+
+- `GET /health` - Health check
+- `POST /webhook/` - GitHub webhook endpoint
+
+## Response Format
+
+The bot posts comments in this format:
+
+```
+🔍 Summary:
+(Brief overview of changes)
+
+🧠 Key Insight:
+(Cross-file issues, duplication, or inconsistencies)
+
+⚠️ Risk:
+(Potential problems or maintainability risks)
+
+💡 Suggestion:
+(Actionable fix)
+
+🎯 Impact:
+(What part of the system is affected)
+```
+
+## License
+
+MIT
