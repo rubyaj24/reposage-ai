@@ -25,11 +25,13 @@ class LLMService:
         related_files: list
     ) -> str:
         """
-        Analyze a PR and generate a structured review.
-        Response is limited to 150 words as per requirements.
+        Analyze a PR and generate a structured review with stat cards.
         """
         if not OPENROUTER_API_KEY:
             raise ValueError("OPENROUTER_API_KEY not set")
+        
+        # Calculate stats for stat cards
+        stats = self._calculate_stats(changed_files)
         
         # Build prompt with PR data
         prompt = self._build_prompt(
@@ -50,21 +52,165 @@ class LLMService:
                     "messages": [
                         {
                             "role": "system",
-                            "content": "You are a senior software engineer reviewing pull requests. Provide concise, actionable feedback. Focus on: code quality issues, potential bugs, security concerns, and maintainability. Keep response under 150 words."
+                            "content": """You are a senior software engineer performing a pull request review.
+
+Your goal is to identify only meaningful, evidence-based issues that a human reviewer would care about.
+
+STRICT RULES:
+- Do NOT give generic advice (e.g., "improve code quality", "add tests")
+- Do NOT repeat obvious information from the diff
+- Do NOT invent problems if none are clearly present
+- Only report issues if confidence is medium or high
+- Prefer silence over weak or speculative feedback
+
+FOCUS ONLY ON:
+- cross-file inconsistencies
+- duplicated logic
+- incorrect or risky changes
+- missing validation or error handling
+- breaking changes or side effects
+
+IGNORE:
+- style issues
+- formatting
+- trivial refactors
+- anything already obvious from the diff
+
+OUTPUT FORMAT (strict):
+
+🔍 Summary:
+(1-2 lines describing what changed)
+
+🧠 Key Insight:
+(ONLY if a real issue exists. Mention exact file(s) and reasoning.)
+
+⚠️ Risk:
+(ONLY if there is a concrete risk. Explain why.)
+
+💡 Suggestion:
+(Actionable fix directly tied to the issue)
+
+IF NO SIGNIFICANT ISSUES:
+Return exactly:
+"No significant issues found. Changes look consistent."
+
+CONSTRAINTS:
+- Keep total response under 120 words
+- Be precise and direct
+- Avoid unnecessary explanation"""
                         },
                         {
                             "role": "user",
                             "content": prompt
                         }
                     ],
-                    "max_tokens": 400
+                    "max_tokens": 250
                 }
             )
             
             response.raise_for_status()
             data = response.json()
             
-            return data["choices"][0]["message"]["content"].strip()
+            raw_review = data["choices"][0]["message"]["content"].strip()
+            
+            # Wrap with stat cards and formatting
+            return self._format_with_stat_cards(raw_review, stats, pr_title)
+    
+    def _calculate_stats(self, changed_files: list) -> dict:
+        """Calculate PR statistics for stat cards."""
+        total_files = len(changed_files)
+        total_additions = sum(f.get('additions', 0) for f in changed_files)
+        total_deletions = sum(f.get('deletions', 0) for f in changed_files)
+        
+        # Determine risk level based on changes
+        if total_deletions > 100 or total_additions > 200:
+            risk_level = "High"
+            risk_color = "red"
+            risk_emoji = "🔴"
+        elif total_deletions > 50 or total_additions > 100:
+            risk_level = "Medium"
+            risk_color = "yellow"
+            risk_emoji = "🟡"
+        else:
+            risk_level = "Low"
+            risk_color = "brightgreen"
+            risk_emoji = "🟢"
+        
+        # Check for sensitive files
+        sensitive_keywords = ['.env', 'config', 'password', 'secret', 'key', 'token', '.gitignore', '.pem', '.p12', '.pfx', 'credentials', 'private']
+        sensitive_files = [f for f in changed_files if any(
+            keyword in f['filename'].lower() 
+            for keyword in sensitive_keywords
+        )]
+        
+        if sensitive_files:
+            risk_level = "High"
+            risk_color = "red"
+            risk_emoji = "🚨"
+        
+        return {
+            "files": total_files,
+            "additions": total_additions,
+            "deletions": total_deletions,
+            "risk_level": risk_level,
+            "risk_color": risk_color,
+            "risk_emoji": risk_emoji,
+            "total_changes": total_additions + total_deletions,
+            "sensitive_files": len(sensitive_files)
+        }
+    
+    def _format_with_stat_cards(self, review: str, stats: dict, pr_title: str) -> str:
+        """Format the review with stat cards header."""
+        
+        # URL-encode risk level for shields.io
+        risk_encoded = stats['risk_level'].replace(' ', '%20')
+        
+        # Create stat cards with shields.io badges
+        stat_cards = f"""<div align="center">
+
+### 🤖 RepoSage AI Review
+
+<br/>
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="https://img.shields.io/badge/📁%20Files-{stats['files']}-blue?style=for-the-badge" alt="Files"/>
+    </td>
+    <td align="center">
+      <img src="https://img.shields.io/badge/➕%20Additions-{stats['additions']}-green?style=for-the-badge" alt="Additions"/>
+    </td>
+    <td align="center">
+      <img src="https://img.shields.io/badge/➖%20Deletions-{stats['deletions']}-red?style=for-the-badge" alt="Deletions"/>
+    </td>
+    <td align="center">
+      <img src="https://img.shields.io/badge/⚠️%20Risk-{risk_encoded}-{stats['risk_color']}?style=for-the-badge" alt="Risk"/>
+    </td>
+  </tr>
+</table>
+
+<br/>
+
+| 📊 Metric | 📈 Value | 🔍 Details |
+|:----------|:--------:|:-----------|
+| 📝 Total Changes | **{stats['total_changes']}** lines | `+{stats['additions']}/-{stats['deletions']}` |
+| 🔒 Security Check | {"⚠️ Issues Found" if stats['sensitive_files'] > 0 else "✅ Clear"} | {stats['sensitive_files']} sensitive file{'s' if stats['sensitive_files'] != 1 else ''} |
+| 📊 Complexity | {stats['risk_emoji']} **{stats['risk_level']}** | Based on change scope |
+
+</div>
+
+---
+
+"""
+        
+        # Simple footer
+        footer = """
+
+---
+<sup>🤖 RepoSage AI</sup>
+"""
+        
+        return stat_cards + review + footer
     
     def _build_prompt(
         self,
@@ -79,37 +225,58 @@ class LLMService:
         # Format changed files summary
         files_summary = "\n".join([
             f"- {f['filename']} ({f['status']}, +{f['additions']}/-{f['deletions']})"
-            for f in changed_files[:10]  # Limit to 10 files
+            for f in changed_files[:10]
         ])
         
         # Format related files
         related_summary = ""
         for f in related_files:
-            related_summary += f"\n### {f['path']}\n```\n{f['content']}\n```\n"
+            related_summary += f"\n### {f['path']}\n```\n{f['content'][:500]}\n```\n"
         
         # Format diffs
         diffs = ""
-        for f in changed_files[:5]:  # Limit to 5 diffs
+        for f in changed_files[:5]:
             if f.get("patch"):
-                diffs += f"\n### {f['filename']}\n```diff\n{f['patch'][:1000]}\n```\n"
+                diffs += f"\n### {f['filename']}\n```diff\n{f['patch'][:800]}\n```\n"
         
-        prompt = f"""Review this pull request:
+        # Format related files for context
+        related = ""
+        for f in related_files:
+            related += f"\n{f['path']}:\n{f['content'][:300]}\n"
+        
+        prompt = f"""Title: {pr_title}
+Commit: {commit_message or "N/A"}
 
-**Title:** {pr_title}
+---
 
-**Description:** {pr_body or 'No description provided'}
+CHANGES (diff):
 
-**Latest Commit:** {commit_message or 'No commit message'}
+{diffs or "No diff available"}
 
-**Changed Files ({len(changed_files)} total):**
-{files_summary}
+---
 
-**Diffs:**
-{diffs}
+RELATED CODE (for comparison):
 
-**Related Files (for context):**
-{related_summary}
+{related or "No related context"}
 
-Provide a structured review with: Summary, Key Insight, Risk, Suggestion, and Impact sections."""
+---
+
+TASK:
+
+Analyze the PR changes and identify ONLY meaningful issues.
+
+Focus on:
+- duplicated logic across files
+- missing validation or error handling
+- risky or breaking changes
+
+IMPORTANT:
+- Compare CHANGES with RELATED CODE
+- Be specific (mention file names)
+- Do NOT give generic advice
+- Do NOT repeat obvious info
+- Only report if confident
+
+Return output using required format."""
         
         return prompt
