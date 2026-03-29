@@ -1,6 +1,6 @@
 [build]
 builder = "DOCKERFILE"
 
-deploy]
+[deploy]
 startCommand = ""
 healthcheckPath = "/health"
