@@ -23,13 +23,11 @@ async def handle_webhook(request: Request, x_github_event: str = Header(None)):
     Handle incoming GitHub webhook events.
     Only processes pull_request events with action=opened.
     """
-    body = await request.json()
+    payload = await request.body()
+    body = json.loads(payload)
     
-    # Verify webhook signature (skip for development)
-    # In production, uncomment:
-    # payload = await request.body()
-    # if not verify_webhook_signature(payload, request.headers):
-    #     raise HTTPException(status_code=401, detail="Invalid signature")
+    if not verify_webhook_signature(payload, request.headers):
+        raise HTTPException(status_code=401, detail="Invalid signature")
     
     logger.info(f"Received event: {x_github_event}")
     
