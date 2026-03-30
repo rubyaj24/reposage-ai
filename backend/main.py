@@ -6,7 +6,8 @@ Minimal FastAPI app for GitHub App webhook handling.
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
-import os
+import os fljdvnfda;vnzc p
+wfsnb qsfk nc
 import logging
 
 # Load .env from backend directory
