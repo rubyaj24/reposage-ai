@@ -114,7 +114,3 @@ The bot posts comments in this format:
 🎯 Impact:
 (What part of the system is affected)
 ```
-
-## License
-
-MIT
