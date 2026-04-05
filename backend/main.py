@@ -9,8 +9,8 @@ from dotenv import load_dotenv
 import os
 import logging
 
-# Load .env from backend directory
-load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+# Load .env from root directory (parent of backend)
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 from routes.webhook import router as webhook_router
 

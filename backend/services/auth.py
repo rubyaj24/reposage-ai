@@ -21,9 +21,9 @@ def _get_private_key() -> str:
     
     # Fallback: try loading from .env file directly
     from dotenv import load_dotenv
-    # Get path to backend/.env relative to this file
-    backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    env_path = os.path.join(backend_dir, '.env')
+    # Get path to root/.env (parent of backend)
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    env_path = os.path.join(root_dir, '.env')
     load_dotenv(env_path)
     key = os.getenv("GITHUB_PRIVATE_KEY", "")
     # Replace literal \n with actual newlines
@@ -36,7 +36,8 @@ def _get_app_id() -> str:
     if app_id:
         return app_id
     from dotenv import load_dotenv
-    load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    load_dotenv(os.path.join(root_dir, '.env'))
     return os.getenv("GITHUB_APP_ID", "")
 
 
@@ -46,7 +47,8 @@ def _get_webhook_secret() -> str:
     if secret:
         return secret
     from dotenv import load_dotenv
-    load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    load_dotenv(os.path.join(root_dir, '.env'))
     return os.getenv("GITHUB_WEBHOOK_SECRET", "")
 
 

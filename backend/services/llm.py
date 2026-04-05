@@ -7,8 +7,17 @@ import httpx
 from typing import Optional
 
 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+
+def _get_api_key() -> str:
+    from dotenv import load_dotenv
+    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    load_dotenv(os.path.join(root_dir, '..', '.env'))
+    key = os.getenv("OPENROUTER_API_KEY")
+    if not key:
+        raise ValueError("OPENROUTER_API_KEY not set")
+    return key
 
 
 class LLMService:
@@ -27,8 +36,7 @@ class LLMService:
         """
         Analyze a PR and generate a structured review with stat cards.
         """
-        if not OPENROUTER_API_KEY:
-            raise ValueError("OPENROUTER_API_KEY not set")
+        api_key = _get_api_key()
         
         # Calculate stats for stat cards
         stats = self._calculate_stats(changed_files)
@@ -42,9 +50,9 @@ class LLMService:
             response = await client.post(
                 OPENROUTER_API_URL,
                 headers={
-                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
-                    "HTTP-Referer": os.getenv("APP_URL", "https://reposage.app"),
+                    "HTTP-Referer": os.getenv("APP_URL", "https://reposage-ai-production.up.railway.app"),
                     "X-Title": "RepoSage"
                 },
                 json={
